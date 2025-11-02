@@ -201,6 +201,60 @@
             font-size: 17px;
         }
 
+        /* Export Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            border-radius: 12px;
+            padding: 20px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .modal-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .modal-btn.primary {
+            background-color: #007aff;
+            color: white;
+        }
+
+        .modal-btn.secondary {
+            background-color: #e5e5ea;
+            color: #1d1d1f;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .sidebar {
@@ -231,7 +285,10 @@
     <div class="sidebar show" id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-title">Notes</div>
-            <button class="new-note-btn" id="newNoteBtn">+</button>
+            <div>
+                <button class="new-note-btn" id="newNoteBtn">+</button>
+                <button class="new-note-btn" id="exportBtn" title="Export Notes">⤓</button>
+            </div>
         </div>
         <div class="notes-list" id="notesList">
             <!-- Notes will be populated here -->
@@ -263,6 +320,18 @@
         </div>
     </div>
 
+    <!-- Export Modal -->
+    <div class="modal" id="exportModal">
+        <div class="modal-content">
+            <div class="modal-title">Export Notes</div>
+            <p>This will export all your notes as a JSON file that you can save to your device.</p>
+            <div class="modal-actions">
+                <button class="modal-btn secondary" id="cancelExportBtn">Cancel</button>
+                <button class="modal-btn primary" id="confirmExportBtn">Export</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Notes data structure
         let notes = JSON.parse(localStorage.getItem('notes')) || [];
@@ -274,12 +343,16 @@
         const emptyState = document.getElementById('emptyState');
         const notesList = document.getElementById('notesList');
         const newNoteBtn = document.getElementById('newNoteBtn');
+        const exportBtn = document.getElementById('exportBtn');
         const backBtn = document.getElementById('backBtn');
         const noteTitleInput = document.getElementById('noteTitleInput');
         const noteContent = document.getElementById('noteContent');
         const deleteNoteBtn = document.getElementById('deleteNoteBtn');
         const shareNoteBtn = document.getElementById('shareNoteBtn');
         const toolbarTitle = document.getElementById('toolbarTitle');
+        const exportModal = document.getElementById('exportModal');
+        const cancelExportBtn = document.getElementById('cancelExportBtn');
+        const confirmExportBtn = document.getElementById('confirmExportBtn');
 
         // Initialize the app
         function init() {
@@ -288,16 +361,33 @@
             
             // Show empty state by default
             showEmptyState();
+            
+            // Register service worker for offline functionality
+            registerServiceWorker();
+        }
+
+        // Register service worker
+        function registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('Service Worker registered with scope:', registration.scope);
+                }).catch(error => {
+                    console.log('Service Worker registration failed:', error);
+                });
+            }
         }
 
         // Set up event listeners
         function setupEventListeners() {
             newNoteBtn.addEventListener('click', createNewNote);
+            exportBtn.addEventListener('click', showExportModal);
             backBtn.addEventListener('click', showNotesList);
             noteTitleInput.addEventListener('input', saveNote);
             noteContent.addEventListener('input', saveNote);
             deleteNoteBtn.addEventListener('click', deleteCurrentNote);
             shareNoteBtn.addEventListener('click', shareCurrentNote);
+            cancelExportBtn.addEventListener('click', hideExportModal);
+            confirmExportBtn.addEventListener('click', exportNotes);
             
             // Responsive behavior
             window.addEventListener('resize', handleResize);
@@ -422,6 +512,33 @@
                     });
                 }
             }
+        }
+
+        // Show export modal
+        function showExportModal() {
+            exportModal.style.display = 'flex';
+        }
+
+        // Hide export modal
+        function hideExportModal() {
+            exportModal.style.display = 'none';
+        }
+
+        // Export notes as JSON
+        function exportNotes() {
+            const dataStr = JSON.stringify(notes, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `notes-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            hideExportModal();
         }
 
         // Save notes to localStorage
