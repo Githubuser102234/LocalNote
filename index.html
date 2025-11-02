@@ -298,6 +298,20 @@
             opacity: 1;
         }
 
+        /* Offline Indicator */
+        .offline-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: #ff3b30;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            z-index: 1000;
+            display: none;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .sidebar {
@@ -324,6 +338,9 @@
     </style>
 </head>
 <body>
+    <!-- Offline Indicator -->
+    <div class="offline-indicator" id="offlineIndicator">Offline</div>
+
     <!-- Sidebar -->
     <div class="sidebar show" id="sidebar">
         <div class="sidebar-header">
@@ -420,6 +437,7 @@
         const exportOption = document.getElementById('exportOption');
         const fileInput = document.getElementById('fileInput');
         const statusMessage = document.getElementById('statusMessage');
+        const offlineIndicator = document.getElementById('offlineIndicator');
 
         // Initialize the app
         function init() {
@@ -431,36 +449,39 @@
             
             // Register service worker for offline functionality
             registerServiceWorker();
+            
+            // Set up online/offline detection
+            setupConnectivityDetection();
         }
 
         // Register service worker
         function registerServiceWorker() {
             if ('serviceWorker' in navigator) {
-                // Register the service worker that's embedded in this HTML
-                navigator.serviceWorker.register('data:application/javascript;base64,' + btoa(`
-                    self.addEventListener('install', event => {
-                        event.waitUntil(
-                            caches.open('local-notes-v1').then(cache => {
-                                return cache.addAll([
-                                    './',
-                                    './?utm_source=homescreen'
-                                ]);
-                            })
-                        );
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(registration => {
+                        console.log('Service Worker registered with scope:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Service Worker registration failed:', error);
                     });
-                    
-                    self.addEventListener('fetch', event => {
-                        event.respondWith(
-                            caches.match(event.request).then(response => {
-                                return response || fetch(event.request);
-                            })
-                        );
-                    });
-                `)).then(registration => {
-                    console.log('Service Worker registered with scope:', registration.scope);
-                }).catch(error => {
-                    console.log('Service Worker registration failed:', error);
-                });
+            }
+        }
+
+        // Set up online/offline detection
+        function setupConnectivityDetection() {
+            window.addEventListener('online', () => {
+                offlineIndicator.style.display = 'none';
+                showStatus('Back online');
+            });
+
+            window.addEventListener('offline', () => {
+                offlineIndicator.style.display = 'block';
+                showStatus('Working offline');
+            });
+
+            // Set initial state
+            if (!navigator.onLine) {
+                offlineIndicator.style.display = 'block';
             }
         }
 
