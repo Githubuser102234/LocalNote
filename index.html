@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Local Notes</title>
+    <link rel="manifest" href="manifest.json">
     <style>
         * {
             margin: 0;
@@ -201,7 +202,7 @@
             font-size: 17px;
         }
 
-        /* Export Modal */
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -255,6 +256,48 @@
             color: #1d1d1f;
         }
 
+        .file-input {
+            display: none;
+        }
+
+        .import-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: background-color 0.2s;
+        }
+
+        .import-option:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .import-icon {
+            font-size: 24px;
+        }
+
+        /* Status Message */
+        .status-message {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .status-message.show {
+            opacity: 1;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .sidebar {
@@ -287,7 +330,7 @@
             <div class="sidebar-title">Notes</div>
             <div>
                 <button class="new-note-btn" id="newNoteBtn">+</button>
-                <button class="new-note-btn" id="exportBtn" title="Export Notes">⤓</button>
+                <button class="new-note-btn" id="importExportBtn" title="Import/Export Notes">⤓</button>
             </div>
         </div>
         <div class="notes-list" id="notesList">
@@ -320,17 +363,38 @@
         </div>
     </div>
 
-    <!-- Export Modal -->
-    <div class="modal" id="exportModal">
+    <!-- Import/Export Modal -->
+    <div class="modal" id="importExportModal">
         <div class="modal-content">
-            <div class="modal-title">Export Notes</div>
-            <p>This will export all your notes as a JSON file that you can save to your device.</p>
+            <div class="modal-title">Import & Export Notes</div>
+            
+            <div class="import-option" id="importOption">
+                <div class="import-icon">📥</div>
+                <div>
+                    <div style="font-weight: 600;">Import Notes</div>
+                    <div style="font-size: 14px; color: #8e8e93;">Add notes from a JSON file</div>
+                </div>
+            </div>
+            
+            <div class="import-option" id="exportOption">
+                <div class="import-icon">📤</div>
+                <div>
+                    <div style="font-weight: 600;">Export Notes</div>
+                    <div style="font-size: 14px; color: #8e8e93;">Save all notes as a JSON file</div>
+                </div>
+            </div>
+            
             <div class="modal-actions">
-                <button class="modal-btn secondary" id="cancelExportBtn">Cancel</button>
-                <button class="modal-btn primary" id="confirmExportBtn">Export</button>
+                <button class="modal-btn secondary" id="cancelImportExportBtn">Cancel</button>
             </div>
         </div>
     </div>
+
+    <!-- Status Message -->
+    <div class="status-message" id="statusMessage"></div>
+
+    <!-- Hidden file input for import -->
+    <input type="file" id="fileInput" class="file-input" accept=".json">
 
     <script>
         // Notes data structure
@@ -343,16 +407,19 @@
         const emptyState = document.getElementById('emptyState');
         const notesList = document.getElementById('notesList');
         const newNoteBtn = document.getElementById('newNoteBtn');
-        const exportBtn = document.getElementById('exportBtn');
+        const importExportBtn = document.getElementById('importExportBtn');
         const backBtn = document.getElementById('backBtn');
         const noteTitleInput = document.getElementById('noteTitleInput');
         const noteContent = document.getElementById('noteContent');
         const deleteNoteBtn = document.getElementById('deleteNoteBtn');
         const shareNoteBtn = document.getElementById('shareNoteBtn');
         const toolbarTitle = document.getElementById('toolbarTitle');
-        const exportModal = document.getElementById('exportModal');
-        const cancelExportBtn = document.getElementById('cancelExportBtn');
-        const confirmExportBtn = document.getElementById('confirmExportBtn');
+        const importExportModal = document.getElementById('importExportModal');
+        const cancelImportExportBtn = document.getElementById('cancelImportExportBtn');
+        const importOption = document.getElementById('importOption');
+        const exportOption = document.getElementById('exportOption');
+        const fileInput = document.getElementById('fileInput');
+        const statusMessage = document.getElementById('statusMessage');
 
         // Initialize the app
         function init() {
@@ -369,7 +436,27 @@
         // Register service worker
         function registerServiceWorker() {
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
+                // Register the service worker that's embedded in this HTML
+                navigator.serviceWorker.register('data:application/javascript;base64,' + btoa(`
+                    self.addEventListener('install', event => {
+                        event.waitUntil(
+                            caches.open('local-notes-v1').then(cache => {
+                                return cache.addAll([
+                                    './',
+                                    './?utm_source=homescreen'
+                                ]);
+                            })
+                        );
+                    });
+                    
+                    self.addEventListener('fetch', event => {
+                        event.respondWith(
+                            caches.match(event.request).then(response => {
+                                return response || fetch(event.request);
+                            })
+                        );
+                    });
+                `)).then(registration => {
                     console.log('Service Worker registered with scope:', registration.scope);
                 }).catch(error => {
                     console.log('Service Worker registration failed:', error);
@@ -380,14 +467,16 @@
         // Set up event listeners
         function setupEventListeners() {
             newNoteBtn.addEventListener('click', createNewNote);
-            exportBtn.addEventListener('click', showExportModal);
+            importExportBtn.addEventListener('click', showImportExportModal);
             backBtn.addEventListener('click', showNotesList);
             noteTitleInput.addEventListener('input', saveNote);
             noteContent.addEventListener('input', saveNote);
             deleteNoteBtn.addEventListener('click', deleteCurrentNote);
             shareNoteBtn.addEventListener('click', shareCurrentNote);
-            cancelExportBtn.addEventListener('click', hideExportModal);
-            confirmExportBtn.addEventListener('click', exportNotes);
+            cancelImportExportBtn.addEventListener('click', hideImportExportModal);
+            importOption.addEventListener('click', triggerImport);
+            exportOption.addEventListener('click', exportNotes);
+            fileInput.addEventListener('change', handleFileImport);
             
             // Responsive behavior
             window.addEventListener('resize', handleResize);
@@ -508,20 +597,74 @@
                 } else {
                     // Fallback for browsers that don't support the Web Share API
                     navigator.clipboard.writeText(textToShare).then(() => {
-                        alert('Note copied to clipboard!');
+                        showStatus('Note copied to clipboard!');
                     });
                 }
             }
         }
 
-        // Show export modal
-        function showExportModal() {
-            exportModal.style.display = 'flex';
+        // Show import/export modal
+        function showImportExportModal() {
+            importExportModal.style.display = 'flex';
         }
 
-        // Hide export modal
-        function hideExportModal() {
-            exportModal.style.display = 'none';
+        // Hide import/export modal
+        function hideImportExportModal() {
+            importExportModal.style.display = 'none';
+        }
+
+        // Trigger file import
+        function triggerImport() {
+            fileInput.click();
+            hideImportExportModal();
+        }
+
+        // Handle file import
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedNotes = JSON.parse(e.target.result);
+                    
+                    if (!Array.isArray(importedNotes)) {
+                        showStatus('Invalid notes file format');
+                        return;
+                    }
+                    
+                    // Merge imported notes with existing ones
+                    const existingIds = new Set(notes.map(note => note.id));
+                    let newNotesCount = 0;
+                    
+                    importedNotes.forEach(note => {
+                        // Only add if it doesn't already exist
+                        if (!existingIds.has(note.id)) {
+                            notes.push(note);
+                            existingIds.add(note.id);
+                            newNotesCount++;
+                        }
+                    });
+                    
+                    saveNotesToStorage();
+                    renderNotesList();
+                    
+                    if (newNotesCount > 0) {
+                        showStatus(`Successfully imported ${newNotesCount} notes`);
+                    } else {
+                        showStatus('No new notes to import');
+                    }
+                    
+                    // Reset file input
+                    fileInput.value = '';
+                    
+                } catch (error) {
+                    showStatus('Error importing notes: Invalid file format');
+                    console.error('Error parsing JSON:', error);
+                }
+            };
+            reader.readAsText(file);
         }
 
         // Export notes as JSON
@@ -538,7 +681,18 @@
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
             
-            hideExportModal();
+            hideImportExportModal();
+            showStatus('Notes exported successfully');
+        }
+
+        // Show status message
+        function showStatus(message) {
+            statusMessage.textContent = message;
+            statusMessage.classList.add('show');
+            
+            setTimeout(() => {
+                statusMessage.classList.remove('show');
+            }, 3000);
         }
 
         // Save notes to localStorage
