@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Local Notes</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="https://localnote-alpha.vercel.app/assets/favicon.PNG" type="image/png">
-<link rel="shortcut icon" href="https://localnote-alpha.vercel.app/assets/favicon.PNG" type="image/png">
+    <link rel="icon" type="image/png" href="https://localnote-alpha.vercel.app/assets/favicon.PNG" sizes="500x500">
     <style>
         * {
             margin: 0;
@@ -176,7 +175,61 @@
             line-height: 1.5;
             resize: none;
             outline: none;
-            min-height: 400px;
+            min-height: 200px;
+        }
+
+        /* Image Styles */
+        .image-container {
+            position: relative;
+            display: inline-block;
+            margin: 10px 0;
+            max-width: 100%;
+        }
+
+        .note-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .delete-image-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .delete-image-btn:hover {
+            background: rgba(0, 0, 0, 0.9);
+        }
+
+        .add-image-btn {
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 10px 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .add-image-btn:hover {
+            background: #0056cc;
         }
 
         .empty-state {
@@ -363,13 +416,17 @@
             <button class="back-btn" id="backBtn">←</button>
             <div class="toolbar-title" id="toolbarTitle">Note</div>
             <div class="toolbar-actions">
+                <button class="toolbar-btn" id="addImageBtn" title="Add Image">🖼️</button>
                 <button class="toolbar-btn" id="deleteNoteBtn">🗑️</button>
                 <button class="toolbar-btn" id="shareNoteBtn">↗️</button>
             </div>
         </div>
         <div class="note-editor" id="noteEditor">
             <input type="text" class="note-title-input" id="noteTitleInput" placeholder="Title">
-            <textarea class="note-content" id="noteContent" placeholder="Start typing..."></textarea>
+            <div id="noteContentContainer">
+                <!-- Text and images will be rendered here -->
+            </div>
+            <textarea class="note-content" id="noteContent" placeholder="Start typing..." style="display: none;"></textarea>
         </div>
     </div>
 
@@ -412,8 +469,9 @@
     <!-- Status Message -->
     <div class="status-message" id="statusMessage"></div>
 
-    <!-- Hidden file input for import -->
+    <!-- Hidden file inputs -->
     <input type="file" id="fileInput" class="file-input" accept=".json">
+    <input type="file" id="imageInput" class="file-input" accept="image/*">
 
     <script>
         // Notes data structure
@@ -430,6 +488,8 @@
         const backBtn = document.getElementById('backBtn');
         const noteTitleInput = document.getElementById('noteTitleInput');
         const noteContent = document.getElementById('noteContent');
+        const noteContentContainer = document.getElementById('noteContentContainer');
+        const addImageBtn = document.getElementById('addImageBtn');
         const deleteNoteBtn = document.getElementById('deleteNoteBtn');
         const shareNoteBtn = document.getElementById('shareNoteBtn');
         const toolbarTitle = document.getElementById('toolbarTitle');
@@ -438,6 +498,7 @@
         const importOption = document.getElementById('importOption');
         const exportOption = document.getElementById('exportOption');
         const fileInput = document.getElementById('fileInput');
+        const imageInput = document.getElementById('imageInput');
         const statusMessage = document.getElementById('statusMessage');
         const offlineIndicator = document.getElementById('offlineIndicator');
 
@@ -494,12 +555,14 @@
             backBtn.addEventListener('click', showNotesList);
             noteTitleInput.addEventListener('input', saveNote);
             noteContent.addEventListener('input', saveNote);
+            addImageBtn.addEventListener('click', triggerImageUpload);
             deleteNoteBtn.addEventListener('click', deleteCurrentNote);
             shareNoteBtn.addEventListener('click', shareCurrentNote);
             cancelImportExportBtn.addEventListener('click', hideImportExportModal);
             importOption.addEventListener('click', triggerImport);
             exportOption.addEventListener('click', exportNotes);
             fileInput.addEventListener('change', handleFileImport);
+            imageInput.addEventListener('change', handleImageUpload);
             
             // Responsive behavior
             window.addEventListener('resize', handleResize);
@@ -546,6 +609,7 @@
                 id: Date.now().toString(),
                 title: '',
                 content: '',
+                images: [],
                 lastModified: new Date().toISOString()
             };
             
@@ -570,8 +634,53 @@
                 noteContent.value = note.content || '';
                 toolbarTitle.textContent = note.title || 'New Note';
                 
+                // Render note content with images
+                renderNoteContent(note);
+                
                 showNoteEditor();
                 renderNotesList();
+            }
+        }
+
+        // Render note content with images
+        function renderNoteContent(note) {
+            noteContentContainer.innerHTML = '';
+            
+            // Create textarea for text content
+            const textarea = document.createElement('textarea');
+            textarea.className = 'note-content';
+            textarea.placeholder = 'Start typing...';
+            textarea.value = note.content || '';
+            textarea.addEventListener('input', saveNote);
+            noteContentContainer.appendChild(textarea);
+            
+            // Add image button
+            const addImageButton = document.createElement('button');
+            addImageButton.className = 'add-image-btn';
+            addImageButton.innerHTML = '📷 Add Image';
+            addImageButton.addEventListener('click', triggerImageUpload);
+            noteContentContainer.appendChild(addImageButton);
+            
+            // Render images
+            if (note.images && note.images.length > 0) {
+                note.images.forEach((imageData, index) => {
+                    const imageContainer = document.createElement('div');
+                    imageContainer.className = 'image-container';
+                    
+                    const img = document.createElement('img');
+                    img.className = 'note-image';
+                    img.src = imageData;
+                    img.alt = `Note image ${index + 1}`;
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-image-btn';
+                    deleteBtn.innerHTML = '×';
+                    deleteBtn.addEventListener('click', () => deleteImage(index));
+                    
+                    imageContainer.appendChild(img);
+                    imageContainer.appendChild(deleteBtn);
+                    noteContentContainer.appendChild(imageContainer);
+                });
             }
         }
 
@@ -582,12 +691,69 @@
             const noteIndex = notes.findIndex(n => n.id === currentNoteId);
             if (noteIndex !== -1) {
                 notes[noteIndex].title = noteTitleInput.value;
-                notes[noteIndex].content = noteContent.value;
+                notes[noteIndex].content = document.querySelector('#noteContentContainer .note-content').value;
                 notes[noteIndex].lastModified = new Date().toISOString();
                 
                 saveNotesToStorage();
                 renderNotesList();
                 toolbarTitle.textContent = noteTitleInput.value || 'New Note';
+            }
+        }
+
+        // Trigger image upload
+        function triggerImageUpload() {
+            imageInput.click();
+        }
+
+        // Handle image upload
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Check if file is an image
+            if (!file.type.startsWith('image/')) {
+                showStatus('Please select an image file');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                
+                // Add image to current note
+                const noteIndex = notes.findIndex(n => n.id === currentNoteId);
+                if (noteIndex !== -1) {
+                    if (!notes[noteIndex].images) {
+                        notes[noteIndex].images = [];
+                    }
+                    notes[noteIndex].images.push(imageData);
+                    notes[noteIndex].lastModified = new Date().toISOString();
+                    
+                    saveNotesToStorage();
+                    renderNoteContent(notes[noteIndex]);
+                    renderNotesList();
+                    showStatus('Image added to note');
+                }
+                
+                // Reset file input
+                imageInput.value = '';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Delete an image
+        function deleteImage(imageIndex) {
+            if (!currentNoteId) return;
+            
+            const noteIndex = notes.findIndex(n => n.id === currentNoteId);
+            if (noteIndex !== -1 && notes[noteIndex].images) {
+                notes[noteIndex].images.splice(imageIndex, 1);
+                notes[noteIndex].lastModified = new Date().toISOString();
+                
+                saveNotesToStorage();
+                renderNoteContent(notes[noteIndex]);
+                renderNotesList();
+                showStatus('Image removed');
             }
         }
 
@@ -610,7 +776,11 @@
             
             const note = notes.find(n => n.id === currentNoteId);
             if (note) {
-                const textToShare = `${note.title || 'Untitled'}\n\n${note.content}`;
+                let textToShare = `${note.title || 'Untitled'}\n\n${note.content || ''}`;
+                
+                if (note.images && note.images.length > 0) {
+                    textToShare += `\n\n[Contains ${note.images.length} image${note.images.length > 1 ? 's' : ''}]`;
+                }
                 
                 if (navigator.share) {
                     navigator.share({
@@ -664,6 +834,10 @@
                     importedNotes.forEach(note => {
                         // Only add if it doesn't already exist
                         if (!existingIds.has(note.id)) {
+                            // Ensure images array exists for imported notes
+                            if (!note.images) {
+                                note.images = [];
+                            }
                             notes.push(note);
                             existingIds.add(note.id);
                             newNotesCount++;
